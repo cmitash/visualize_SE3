@@ -80,7 +80,7 @@ void get_rotation_4d(float qw, float qx, float qy, float qz, pcl::PointXYZ &poin
 }
 
 void get_custom_se3(float tx, float ty, float tz, float qw, float qx, float qy, float qz, 
-	pcl::PointXYZ &point_start, pcl::PointXYZ &point_end_x, pcl::PointXYZ &point_end_y) {
+	pcl::PointXYZ &point_start, pcl::PointXYZ &point_end_x, pcl::PointXYZ &point_end_y, Eigen::Vector3f &z_axis) {
 	Eigen::Quaternionf q;
   	q.w() = qw;
 	q.x() = qx;
@@ -91,6 +91,7 @@ void get_custom_se3(float tx, float ty, float tz, float qw, float qx, float qy, 
 
 	Eigen::Vector3f x_axis = rotMat.col(0);
 	Eigen::Vector3f y_axis = rotMat.col(1);
+	z_axis = rotMat.col(2);
 
 	point_start.x = tx;
 	point_start.y = ty;
@@ -108,6 +109,7 @@ void get_custom_se3(float tx, float ty, float tz, float qw, float qx, float qy, 
 void custom_se3_vizualization(ifstream &pFile, std::vector<boost::shared_ptr<pcl::visualization::PCLVisualizer> > &viewers) {
 	float tx, ty, tz, qw, qx, qy, qz;
   	pcl::PointXYZ point_start, point_end_x, point_end_y;
+  	Eigen::Vector3f z_axis;
   	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer_se3 (new pcl::visualization::PCLVisualizer ("se3"));
 	int num_poses = 0;
 
@@ -117,13 +119,34 @@ void custom_se3_vizualization(ifstream &pFile, std::vector<boost::shared_ptr<pcl
 
 	// get ground truth pose
 	pFile >> tx >> ty >> tz >> qw >> qx >> qy >> qz;
-  	get_custom_se3(tx, ty, tz, qw, qx, qy, qz, point_start, point_end_x, point_end_y);
-	viewer_se3->addLine (point_start, point_end_x, 0.0f, 0.0f, 1.0f, "gt_x");
-  	// viewer_se3->addLine (point_start, point_end_y, 0.0f, 0.0f, 0.0f, "gt_y");
+  	get_custom_se3(tx, ty, tz, qw, qx, qy, qz, point_start, point_end_x, point_end_y, z_axis);
+  	pcl::ModelCoefficients coeffs;
+  	coeffs.values.clear ();
+	coeffs.values.push_back (tx);
+	coeffs.values.push_back (ty);
+	coeffs.values.push_back (tz);
+	coeffs.values.push_back (LINE_SIZE*z_axis[0]);
+	coeffs.values.push_back (LINE_SIZE*z_axis[1]);
+	coeffs.values.push_back (LINE_SIZE*z_axis[2]);
+	coeffs.values.push_back (15.0);
+  	viewer_se3->addCone(coeffs, "cone_gt");
+
+	// viewer_se3->addLine (point_start, point_end_x, 0.0f, 0.0f, 1.0f, "gt_x");
+ //  	viewer_se3->addLine (point_start, point_end_y, 0.0f, 0.0f, 0.0f, "gt_y");
 
   	while(pFile >> tx >> ty >> tz >> qw >> qx >> qy >> qz) {
-  		get_custom_se3(tx, ty, tz, qw, qx, qy, qz, point_start, point_end_x, point_end_y);
-  		viewer_se3->addLine (point_start, point_end_x, 1.0f, 0.0f, 0.0f, std::to_string(num_poses) + "_x");
+  		get_custom_se3(tx, ty, tz, qw, qx, qy, qz, point_start, point_end_x, point_end_y, z_axis);
+  		pcl::ModelCoefficients coeffs;
+	  	coeffs.values.clear ();
+		coeffs.values.push_back (tx);
+		coeffs.values.push_back (ty);
+		coeffs.values.push_back (tz);
+		coeffs.values.push_back (LINE_SIZE*z_axis[0]);
+		coeffs.values.push_back (LINE_SIZE*z_axis[1]);
+		coeffs.values.push_back (LINE_SIZE*z_axis[2]);
+		coeffs.values.push_back (15.0);
+	  	viewer_se3->addCone(coeffs, std::to_string(num_poses));
+  		// viewer_se3->addLine (point_start, point_end_x, 1.0f, 0.0f, 0.0f, std::to_string(num_poses) + "_x");
   		// viewer_se3->addLine (point_start, point_end_y, 0.0f, 1.0f, 0.0f, std::to_string(num_poses) + "_y");
   		num_poses++;
   	}
