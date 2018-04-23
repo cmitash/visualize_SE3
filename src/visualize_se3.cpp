@@ -10,7 +10,7 @@
 #define POINT_SIZE 0.002
 #define LINE_SIZE 0.001
 #define GT_POINT_SIZE 0.002
-enum modes {KUFFNER, SE3};
+enum modes {KUFFNER, SE3, MODEL};
 
 void toEulerianAngle(Eigen::Quaternionf q, Eigen::Vector3f& eulAngles){
 	// roll (x-axis rotation)
@@ -106,6 +106,29 @@ void get_custom_se3(float tx, float ty, float tz, float qw, float qx, float qy, 
 	point_end_y.z = point_start.z + LINE_SIZE*y_axis[2];
 }
 
+void get_transformed_model(float tx, float ty, float tz, float qw, float qx, float qy, float qz, 
+	pcl::PointCloud<pcl::PointNormal>::Ptr pcl_model, pcl::PointCloud<pcl::PointNormal>::Ptr pcl_model_transformed) {
+	Eigen::Matrix4f pc_transform;
+	pc_transform(0,3) = tx;
+	pc_transform(1,3) = ty;
+	pc_transform(2,3) = tz;
+	pc_transform(3,3) = 1;
+
+	Eigen::Quaternionf q;
+	q.w() = qw;
+	q.x() = qx;
+	q.y() = qy;
+	q.z() = qz;
+	Eigen::Matrix3f rotMat;
+	rotMat = q.toRotationMatrix();
+
+	for(int ii = 0;ii < 3; ii++)
+		for(int jj=0; jj < 3; jj++){
+			pc_transform(ii,jj) = rotMat(ii,jj);
+		}
+	pcl::transformPointCloud(*pcl_model, *pcl_model_transformed, pc_transform);
+}
+
 void custom_se3_vizualization(ifstream &pFile, std::vector<boost::shared_ptr<pcl::visualization::PCLVisualizer> > &viewers) {
 	float tx, ty, tz, qw, qx, qy, qz;
   	pcl::PointXYZ point_start, point_end_x, point_end_y;
@@ -152,6 +175,38 @@ void custom_se3_vizualization(ifstream &pFile, std::vector<boost::shared_ptr<pcl
   	}
 
   	viewers.push_back(viewer_se3);
+
+  	std::cout << "visualizing " << num_poses << " poses." << std::endl;	
+}
+
+void model_visualization(ifstream &pFile, std::string model_location, 
+	std::vector<boost::shared_ptr<pcl::visualization::PCLVisualizer> > &viewers) {
+
+	float tx, ty, tz, qw, qx, qy, qz;
+  	pcl::PointXYZ point_start, point_end_x, point_end_y;
+  	Eigen::Vector3f z_axis;
+  	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer_model (new pcl::visualization::PCLVisualizer ("se3"));
+  	pcl::PointCloud<pcl::PointNormal>::Ptr pcl_model = pcl::PointCloud<pcl::PointNormal>::Ptr(new pcl::PointCloud<pcl::PointNormal>);
+  	pcl::PointCloud<pcl::PointNormal>::Ptr pcl_model_transformed = pcl::PointCloud<pcl::PointNormal>::Ptr(new pcl::PointCloud<pcl::PointNormal>);
+	int num_poses = 0;
+
+	pcl::io::loadPLYFile(model_location, *pcl_model);
+	viewer_model->setBackgroundColor (0, 0, 0);
+	viewer_model->addCoordinateSystem (0.1);
+	viewer_model->initCameraParameters ();
+
+	// get ground truth pose
+	pFile >> tx >> ty >> tz >> qw >> qx >> qy >> qz;
+	get_transformed_model(tx, ty, tz, qw, qx, qy, qz, pcl_model, pcl_model_transformed);
+	viewer_model->addPointCloud<pcl::PointNormal> (pcl_model_transformed, "gt cloud");
+
+  	while(pFile >> tx >> ty >> tz >> qw >> qx >> qy >> qz) {
+		get_transformed_model(tx, ty, tz, qw, qx, qy, qz, pcl_model, pcl_model_transformed);
+  		viewer_model->addPointCloud<pcl::PointNormal> (pcl_model_transformed, std::to_string(num_poses));
+  		num_poses++;
+  	}
+
+  	viewers.push_back(viewer_model);
 
   	std::cout << "visualizing " << num_poses << " poses." << std::endl;	
 }
@@ -210,6 +265,10 @@ int main(int argc, char* argv[]) {
 		cerr << "Can't read the input file !!!\n";
 		exit(-1);
 	}
+	if(mode == MODEL && argc < 4) {
+		cerr << "<mode of operation><filepath for a file with se3 configurations><model path>\n";
+		exit(-1);
+	}
 
 	switch(mode) {
 		case KUFFNER: 
@@ -217,6 +276,9 @@ int main(int argc, char* argv[]) {
 			break;
 		case SE3:
 			custom_se3_vizualization(pFile, viewers);
+			break;
+		case MODEL:
+			model_visualization(pFile, std::string(argv[3]), viewers);
 			break;
 		default:
 			break;
